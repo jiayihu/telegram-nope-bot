@@ -30,11 +30,14 @@ const bot = new Telegraf(process.env.TELEGRAM_TOKEN!);
 bot.hears('Hi', (ctx) => ctx.reply('Hey there'));
 
 bot.command('track', (ctx) => {
-  const ticker = ctx.message.text.replace('/track ', '');
+  const message = ctx.message.text.replace('/track ', '');
 
-  if (ticker === '/track') {
+  if (message === '/track') {
     return ctx.reply(`Wrong command format. Correct format is '/track GME'`);
   }
+
+  const [ticker, thresholdAbs] = message.trim().split(' ');
+  const threshold = Math.abs(Number(thresholdAbs));
 
   if (!TICKERS.includes(ticker)) {
     return ctx.reply(`Ticker ${ticker} not in the list`);
@@ -42,21 +45,37 @@ bot.command('track', (ctx) => {
 
   const now = new Date();
   const month = String(now.getMonth() + 1).padStart(2, '0');
-  const day = String(now.getDate() - 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
   const date = `${month}-${day}-${now.getFullYear()}`;
   const url = `https://nopechart.com/cache/${ticker}_${date}.json?=${now.getTime()}`;
-  console.log(url);
 
-  fetch(url)
-    .then((response) => response.json())
-    .then((ticks) => {
-      const last = ticks[ticks.length - 1];
-      const { nope, price } = last;
+  const update = () =>
+    fetch(url)
+      .then((response) => response.json())
+      .then((ticks) => {
+        const last = ticks[ticks.length - 1];
+        const { nope, price } = last;
+        const nopePretty = nope.toFixed(2);
+        const pricePretty = price.toFixed(2);
 
-      ctx.reply(`NOPE: ${Math.round(nope)}, price: ${Math.round(price)}`);
-    });
+        console.log(ticker, nope, price);
 
-  ctx.reply(`Tracking ticker ${ticker}`);
+        // const trackMsg = `${ticker} NOPE: ${nopePretty}, price: ${pricePretty}`;
+        // ctx.reply(trackMsg, {
+        //   disable_notification: true,
+        // });
+
+        if (Math.abs(nope) >= threshold) {
+          const alertMsg = `${ticker} NOPE: ${nopePretty} vs ${threshold}, price: ${pricePretty}`;
+          ctx.reply(alertMsg);
+        }
+      });
+
+  setInterval(() => update(), 30 * 1000); // 30s
+
+  ctx.reply(`Tracking ticker ${ticker} with threshold ${threshold}`);
+
+  update();
 });
 
 bot.launch();

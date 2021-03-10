@@ -4,7 +4,8 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "start": "ts-node index.ts",
+    "start": "node index.js",
+    "dev": "ts-node index.ts",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
@@ -18,7 +19,6 @@
     "typescript": "^4.2.2"
   },
   "dependencies": {
-    "cheerio": "^1.0.0-rc.5",
     "node-fetch": "^2.6.1",
     "telegraf": "^4.1.1"
   }

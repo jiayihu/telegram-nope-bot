@@ -19,6 +19,8 @@
     "typescript": "^4.2.2"
   },
   "dependencies": {
+    "fp-ts": "^2.9.5",
+    "newtype-ts": "^0.3.4",
     "node-fetch": "^2.6.1",
     "telegraf": "^4.1.1"
   }

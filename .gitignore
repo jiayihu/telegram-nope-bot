@@ -1,4 +1,4 @@
-index.js
+*.js
 .env*
 
 # Created by https://www.toptal.com/developers/gitignore/api/macos,vscode,node

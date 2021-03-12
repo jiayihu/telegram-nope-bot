@@ -5,8 +5,8 @@
   "main": "index.js",
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "start": "node index.js",
-    "dev": "ts-node index.ts",
+    "start": "node src/index.js",
+    "dev": "ts-node src/index.ts",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
@@ -21,6 +21,8 @@
   },
   "dependencies": {
     "fp-ts": "^2.9.5",
+    "io-ts": "^2.2.16",
+    "monocle-ts": "^2.3.9",
     "newtype-ts": "^0.3.4",
     "node-fetch": "^2.6.1",
     "telegraf": "^4.1.1"

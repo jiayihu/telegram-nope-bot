@@ -1,42 +1,12 @@
 import { Context, Telegraf } from 'telegraf';
-import fetch from 'node-fetch';
 import * as E from 'fp-ts/Either';
 import * as O from 'fp-ts/lib/Option';
+import * as TE from 'fp-ts/lib/TaskEither';
 import { pipe } from 'fp-ts/lib/function';
-import { Newtype, iso } from 'newtype-ts';
+import { Ticker, validateTicker, requestNOPE, NOPEError } from './nope';
 
 if (process.env.NODE_ENV !== 'production') {
   require('dotenv').config();
-}
-
-interface Ticker extends Newtype<{ readonly Ticker: unique symbol }, string> {}
-const isoTicker = iso<Ticker>();
-
-const TICKERS = [
-  'AAPL',
-  'AMZN',
-  'ARKK',
-  'BALY',
-  'BB',
-  'BLI',
-  'CLOV',
-  'CRSA',
-  'EEM',
-  'GME',
-  'GRWG',
-  'IWM',
-  'MGNI',
-  'NOK',
-  'PLTR',
-  'QQQ',
-  'SPY',
-  'SSPK',
-  'TLRY',
-  'TSLA',
-];
-
-function validateTicker(ticker: string): O.Option<Ticker> {
-  return TICKERS.includes(ticker) ? O.some(isoTicker.wrap(ticker)) : O.none;
 }
 
 type TrackRecord = {
@@ -48,7 +18,7 @@ let trackingRecords: Array<TrackRecord> = [];
 
 const bot = new Telegraf(process.env.TELEGRAM_TOKEN!);
 
-bot.hears(['hi', 'Hi'], (ctx) => ctx.reply('Hey there'));
+bot.hears(['hi', 'Hi'], (ctx) => ctx.reply('Hey there. This is NOPE-bot v0.1'));
 
 bot.command('now', (ctx) => {
   const ticker = ctx.message.text.replace('/now ', '');
@@ -64,13 +34,30 @@ bot.command('now', (ctx) => {
         ctx.reply(`Ticker ${ticker} not in the list`);
       },
       (ticker) => {
-        requestNOPE(ticker)
-          .then(([nope, price]) => {
-            const msg = buildMsg(ticker, nope, price);
+        requestNOPE(ticker)()
+          .then((nope) => {
+            pipe(
+              nope,
+              E.fold(
+                (error) => {
+                  switch (error.type) {
+                    case 'JSONParseError':
+                    case 'EmptyDataError':
+                      ctx.reply(`Error requesting the NOPE now. Retry.`);
+                      break;
+                    case 'HTTPError':
+                      ctx.reply(`Error requesting the NOPE: ${error.details}`);
+                  }
+                },
+                ({ nope, price }) => {
+                  const msg = buildMsg(ticker, nope, price);
 
-            ctx.reply(msg);
+                  ctx.reply(msg);
+                },
+              ),
+            );
           })
-          .catch((e) => replyError(ctx, e));
+          .catch((e) => ctx.reply(`Unexpected error: ${e}. Contact Jiayi :P`));
       },
     ),
   );
@@ -104,19 +91,35 @@ bot.command('track', (ctx) => {
         ctx.reply(error);
       },
       (ticker) => {
-        const update = () =>
-          requestNOPE(ticker)
-            .then(([nope, price]) => {
-              if (Math.abs(nope) >= threshold) {
-                const msg = buildMsg(ticker, nope, price);
+        const update = () => {
+          requestNOPE(ticker)()
+            .then((nope) => {
+              pipe(
+                nope,
+                E.fold(
+                  (error) => {
+                    switch (error.type) {
+                      case 'JSONParseError':
+                      case 'EmptyDataError':
+                        // Ignore
+                        break;
+                      case 'HTTPError':
+                        ctx.reply(`Error requesting the NOPE: ${error.details}`);
+                        untrack(ticker);
+                    }
+                  },
+                  ({ nope, price }) => {
+                    if (Math.abs(nope) >= threshold) {
+                      const msg = buildMsg(ticker, nope, price);
 
-                ctx.reply(msg);
-              }
+                      ctx.reply(msg);
+                    }
+                  },
+                ),
+              );
             })
-            .catch((e) => {
-              replyError(ctx, e);
-              untrack(ticker);
-            });
+            .catch((e) => ctx.reply(`Unexpected error: ${e}. Contact Jiayi :P`));
+        };
 
         let token = setInterval(() => update(), 30 * 1000); // 30s
         trackingRecords = [...trackingRecords, { ticker, token }];
@@ -155,32 +158,6 @@ bot.launch();
 // Enable graceful stop
 process.once('SIGINT', () => bot.stop('SIGINT'));
 process.once('SIGTERM', () => bot.stop('SIGTERM'));
-
-function requestNOPE(ticker: Ticker) {
-  const now = new Date();
-  const month = String(now.getMonth() + 1).padStart(2, '0');
-  const day = String(now.getDate()).padStart(2, '0');
-  const date = `${month}-${day}-${now.getFullYear()}`;
-  const url = `https://nopechart.com/cache/${ticker}_${date}.json?=${now.getTime()}`;
-  console.log(url);
-
-  return fetch(url)
-    .then((response) => response.json())
-    .then((ticks) => {
-      if (!ticks.length) {
-        throw new Error('No data available');
-      }
-
-      const last = ticks[ticks.length - 1];
-      const { nope, price } = last;
-
-      return [nope, price];
-    });
-}
-
-function replyError(ctx: Context, error: any) {
-  ctx.reply(`Error requesting NOPE: ${error}`);
-}
 
 function untrack(ticker: Ticker): O.Option<TrackRecord> {
   let record = trackingRecords.find((r) => r.ticker === ticker);
